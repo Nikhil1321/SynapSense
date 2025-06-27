@@ -13,3 +13,5 @@ scikit-learn~=1.6.1
 scipy~=1.13.1
 pandas~=2.3.0
 pillow~=11.2.1
+aedat~=2.2.0
+pytest~=8.4.1
