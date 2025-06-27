@@ -39,7 +39,8 @@ class LoggerManager:
     @classmethod
     def get_logger(cls):
         if cls._logger_instance is None:
-            raise RuntimeError("Logger not initialized. Please call LoggerManager.initialize_logger() first.")
+            print("[LOGGER INFO] Logger not initialized. Auto-initializing with default settings.")
+            cls.initialize_logger()
         return cls._logger_instance
 
     @classmethod
@@ -70,15 +71,3 @@ class LoggerManager:
                 except Exception as e:
                     print(f"[LOGGER WARNING] Failed to close handler: {e}")
             cls._logger_instance = None
-
-# def shutdown_logger():
-#     """
-#     Gracefully shuts down all active loggers and closes their handlers.
-#     Required before deleting log files on Windows.
-#     """
-#     logger = LoggerManager.get_logger()
-#
-#     handlers = logger.handlers[:]
-#     for handler in handlers:
-#         handler.close()
-#         logger.removeHandler(handler)
