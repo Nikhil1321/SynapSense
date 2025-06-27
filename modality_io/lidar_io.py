@@ -1,7 +1,8 @@
-# modality_io/lidar_io.py
+# modality_io/lidar.py
 
 from modality_io.base_io import BaseIO, IORegistry
-from typing import Any, Optional
+from modality_io.utils import validate_extension, get_file_extension, ensure_directory_exists
+from typing import Any, Dict
 from pathlib import Path
 import numpy as np
 import open3d as o3d
@@ -9,71 +10,71 @@ import laspy
 from configs.modality_config import SUPPORTED_EXTENSIONS
 from logger.logger_manager import LoggerManager
 
-# Initialise logger
+# Initialize logger
 log = LoggerManager.get_logger()
 
 
 class LidarIO(BaseIO):
     def __init__(self):
-        self.point_cloud: Optional[np.ndarray] = None
         self.supported_read_extensions = SUPPORTED_EXTENSIONS['lidar']['read']
         self.supported_write_extensions = SUPPORTED_EXTENSIONS['lidar']['write']
 
-        IORegistry.register_reader('lidar', self.__class__)
-        IORegistry.register_writer('lidar', self.__class__)
+        # IORegistry.register_reader('lidar', self.__class__)
+        # IORegistry.register_writer('lidar', self.__class__)
 
-    def read(self, file_path: str) -> np.ndarray:
-        if not self.validate_extension(Path(file_path).suffix, self.supported_read_extensions):
-            raise ValueError(f"Unsupported file extension for LidarIO: {file_path}")
-
-        ext = Path(file_path).suffix.lower()
+    def read(self, file_path: str) -> Dict[str, Any]:
+        file_ext = get_file_extension(file_path)
+        if not validate_extension(file_path, self.supported_read_extensions):
+            raise ValueError(f"Unsupported file extension for LiDAR: {file_ext}")
 
         try:
-            if ext in ['.pcd', '.ply']:
+            if file_ext in ['.pcd', '.ply']:
                 pcd = o3d.io.read_point_cloud(str(file_path))
-                self.point_cloud = np.asarray(pcd.points)
+                point_cloud = np.asarray(pcd.points)
 
-            elif ext in ['.las', '.laz']:
+            elif file_ext in ['.las', '.laz']:
                 las = laspy.read(file_path)
-                self.point_cloud = np.vstack((las.x, las.y, las.z)).T
+                point_cloud = np.vstack((las.x, las.y, las.z)).T
 
-            elif ext == '.bin':
-                self.point_cloud = np.fromfile(file_path, dtype=np.float32).reshape(-1, 4)
+            elif file_ext == '.bin':
+                point_cloud = np.fromfile(file_path, dtype=np.float32).reshape(-1, 4)
 
             else:
-                raise ValueError(f"Unsupported file format: {ext}")
+                raise ValueError(f"Unsupported file format: {file_ext}")
+
+            log.info(f"LiDAR file successfully read: {file_path} | Shape: {point_cloud.shape}")
+
+            return {
+                'data': point_cloud,
+                'timestamps': None,  # LiDAR files typically don't carry per-point timestamps
+                'columns': ['X', 'Y', 'Z']  # Generic column labels for point clouds
+            }
 
         except Exception as e:
             raise ValueError(f"Failed to read LiDAR file {file_path}: {e}")
 
-        log.info(f"LiDAR file successfully read: {file_path} | Shape: {self.point_cloud.shape}")
-        return self.point_cloud
+    def write(self, data_bundle: Dict[str, Any], file_path: str) -> None:
+        file_ext = get_file_extension(file_path)
+        if not validate_extension(file_path, self.supported_write_extensions):
+            raise ValueError(f"Unsupported file extension for LiDAR: {file_ext}")
 
-    def write(self, data: Any = None, file_path: str = None) -> None:
-        if file_path is None:
-            raise ValueError("file_path must be provided for writing.")
+        if 'data' not in data_bundle or data_bundle['data'] is None:
+            raise ValueError("Data bundle must contain 'data' key with valid LiDAR point cloud data.")
 
-        if data is None:
-            if self.point_cloud is None:
-                log.error("No point cloud loaded to write.")
-                raise ValueError("No point cloud loaded to write.")
-            data = self.point_cloud
+        data = data_bundle['data']
 
         if not isinstance(data, np.ndarray) or data.shape[1] < 3:
-            raise ValueError("LiDAR data must be a NumPy array with at least three columns (x, y, z).")
+            raise ValueError("LiDAR data must be a NumPy array with at least three columns (X, Y, Z).")
 
-        if not self.validate_extension(Path(file_path).suffix, self.supported_write_extensions):
-            raise ValueError(f"Unsupported file extension for LidarIO: {file_path}")
-
-        ext = Path(file_path).suffix.lower()
+        ensure_directory_exists(str(Path(file_path).parent))
 
         try:
-            if ext in ['.pcd', '.ply']:
+            if file_ext in ['.pcd', '.ply']:
                 pcd = o3d.geometry.PointCloud()
                 pcd.points = o3d.utility.Vector3dVector(data[:, :3])
                 o3d.io.write_point_cloud(str(file_path), pcd)
 
-            elif ext in ['.las', '.laz']:
+            elif file_ext in ['.las', '.laz']:
                 header = laspy.LasHeader(point_format=3, version="1.2")
                 las = laspy.LasData(header)
                 las.x = data[:, 0]
@@ -81,13 +82,17 @@ class LidarIO(BaseIO):
                 las.z = data[:, 2]
                 las.write(file_path)
 
-            elif ext == '.bin':
+            elif file_ext == '.bin':
                 data.astype(np.float32).tofile(file_path)
 
             else:
-                raise ValueError(f"Unsupported file format: {ext}")
+                raise ValueError(f"Unsupported file format: {file_ext}")
 
         except Exception as e:
             raise ValueError(f"Failed to write LiDAR file {file_path}: {e}")
 
         log.info(f"LiDAR file successfully saved: {file_path} | Shape: {data.shape}")
+
+
+IORegistry.register_reader('lidar', LidarIO)
+IORegistry.register_writer('lidar', LidarIO)
