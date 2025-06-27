@@ -173,3 +173,5 @@ backup/
 debug_outputs/
 data/
 notes/
+tests/
+pytest.ini
